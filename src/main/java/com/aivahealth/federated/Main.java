@@ -20,7 +20,6 @@ import java.util.GregorianCalendar;
 import java.util.Properties;
 
 public class Main {
-    static final String url = "https://aivahealth.com/api/v1";
     static final String tokenFile = "aiva-jwt.properties";
     static final String expirePropKey = "expire";
     static final String tokenPropKey = "token";
@@ -50,16 +49,52 @@ public class Main {
                 token = getAuthToken(clientId, clientSecret);
             }
 
-            System.out.println("token " + token);
+            if (token == null) {
+                System.err.println("Exiting; was not able to get a valid auth token");
+                System.exit(1);
+            }
+
+            // POST a customer request
+            sendCustomerRequest(token);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    private static void sendCustomerRequest(String token) throws IOException {
+        JSONObject jsonObj = new JSONObject();
+        jsonObj.put("device", "mydevice");
+        jsonObj.put("unit", "myunit");
+        jsonObj.put("bed", "mybed");
+        jsonObj.put("room", "myroom");
+        jsonObj.put("msg", "somemsg");
+        jsonObj.put("organizationId", "cshs");
+        jsonObj.put("organizationEnv", "SUP");
+        jsonObj.put("source", "R5");
+
+        HttpClient client = HttpClients.createDefault();
+        HttpPost post = new HttpPost("http://federated.aivadev.com/v1/customer/request");
+        post.addHeader("content-type", "application/json");
+        post.addHeader("Authorization", "Bearer " + token);
+
+        HttpEntity entity = new StringEntity(jsonObj.toJSONString());
+        post.setEntity(entity);
+
+        HttpResponse response = client.execute(post);
+        if (response.getStatusLine().getStatusCode() == 204) {
+            System.out.println("Success!");
+        } else {
+            HttpEntity responseEntity = response.getEntity();
+            String content = IOUtils.toString(responseEntity.getContent(), "UTF-8");
+            System.out.println("Failed request");
+            System.out.println(" Status: " + response.getStatusLine());
+            System.out.println(" Content: " + content);
+        }
+    }
+
     private static String getAuthToken(String clientId, String clientSecret) throws IOException, ParseException {
         JSONObject jsonObj = new JSONObject();
-
-        jsonObj.put("audience", url);
+        jsonObj.put("audience", "https://aivahealth.com/api/v1");
         jsonObj.put("client_id", clientId);
         jsonObj.put("client_secret", clientSecret);
         jsonObj.put("client_credentials", "ClientId");
@@ -104,12 +139,9 @@ public class Main {
 
         try {
             String bar = FileUtils.readFileToString(new File(tokenFile), "UTF-8");
-            System.out.println("bar " + bar);
             prop.load(IOUtils.toInputStream(bar, "UTF-8"));
             String token = prop.getProperty(tokenPropKey);
             String expires = prop.getProperty(expirePropKey);
-            System.out.println(token);
-            System.out.println(expires);
             Date date = sdf.parse(expires);
             if (token != "" && new Date().before(date)) {
                 return token;
